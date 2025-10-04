@@ -14,4 +14,4 @@ def recursive_token_split(text: str, chunk_tokens=600, overlap=80, model="gpt-4o
         text_chunk = enc.decode(window)
         chunks.append(text_chunk)
         i += chunk_tokens - overlap
-    return [c.strip()]
+    return [c.strip() for c in chunks if c.strip()]
