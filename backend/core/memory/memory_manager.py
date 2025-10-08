@@ -15,6 +15,7 @@ class MemoryManager:
         init_db(sqlite_path)
         self.conn = sqlite3.connect(sqlite_path)
         self.conn.row_factory = sqlite3.Row
+        os.makedirs(os.path.dirname(sqlite_path), exist_ok=True)
 
         if os.path.exists(faiss_path):
             self.index = faiss.read_index(faiss_path)
@@ -41,6 +42,7 @@ class MemoryManager:
             
         self.conn.commit()
 
+        embeddings = embeddings.astype("float32")
         faiss.normalize_L2(embeddings)
 
         if self.index is None:
@@ -55,7 +57,10 @@ class MemoryManager:
     def search(self, query_vector: np.ndarray, k: int = 3):
 
         if self.index is None:
-            raise ValueError("Index is not loaded")
+            print("Index not loaded in memory. Attempting to reload..")
+            self.load_index()
+            if self.index is None:
+                raise ValueError("Failed to load index. Ensure /upload was called first.")
         
         q = np.asarray(query_vector, dtype=np.float32)
         if q.ndim == 1:
@@ -97,7 +102,15 @@ class MemoryManager:
 
 
     def load_index(self):
-        self.index = faiss.read_index(self.faiss_path)
-
+        if os.path.exists(self.faiss_path):
+            try:
+                self.index = faiss.read_index(self.faiss_path)
+                print("FAISS index successfully loaded from disk.")
+            except Exception as e:
+                print(f"Failed to load FAISS index: {e}. Reinitializing new index.")
+                self.index = None
+        else:
+            print("No FAISS index found, creating new.")
+            self.index = None
 
     
