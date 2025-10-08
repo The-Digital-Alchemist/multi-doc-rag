@@ -3,7 +3,7 @@ import numpy as np
 
 client = OpenAI()
 
-def embed_chunks(chunks: list[str], model="text-embedding-3-small") -> list[np.ndarray]:
+def embed_chunks(chunks: list[str], model="text-embedding-3-large") -> list[np.ndarray]:
     response = client.embeddings.create(
         model=model,
         input=chunks

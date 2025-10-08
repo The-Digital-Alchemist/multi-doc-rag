@@ -3,6 +3,7 @@ from backend.core.memory.memory_manager import MemoryManager
 from backend.core.splitters import recursive_token_split
 from backend.core.embeddings import embed_chunks
 from backend.utils.io import read_text_from_path, save_upload
+from backend.core.LLM.llm_engine import generate_answer
 import numpy as np
 import os
 
@@ -54,7 +55,11 @@ async def upload_file(file: UploadFile):
 async def query_rag(query: str = Form(...), k: int = 3):
     q_emb = np.array(embed_chunks([query]))
     results = memory.search(q_emb, k=k)
-    return {"results": results}
+
+    contexts = [r["content"] for r in results]
+
+    answer = generate_answer(query, contexts)
+    return {"answer": answer, "results": results}
 
 
 

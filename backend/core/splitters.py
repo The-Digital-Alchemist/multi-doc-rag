@@ -3,7 +3,7 @@ from typing import List
 
 
 
-def recursive_token_split(text: str, chunk_tokens=600, overlap=80, model="gpt-4o-mini")-> List[str]:
+def recursive_token_split(text: str, chunk_tokens=400, overlap=100, model="gpt-4o-mini")-> List[str]:
     enc = tiktoken.encoding_for_model(model)
     tokens = enc.encode(text)
     chunks = []
