@@ -1,3 +1,26 @@
-/.venv
-__pycache__
-.env
+# Data folder (shared between backend and frontend)
+data/index/
+data/uploads/
+data/ingested/
+
+# Backend
+backend/__pycache__/
+backend/.venv/
+backend/.env
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+frontend/.env
+
+# Root venv
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
