@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Upload, Search, FileText, Loader2 } from "lucide-react";
+import { apiService } from "@/lib/api";
 
 export default function Home() {
   const [query, setQuery] = useState("");
@@ -15,12 +16,27 @@ export default function Home() {
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState<SourceItem[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [searchError, setSearchError] = useState("");
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
-    if (files) {
-      const fileNames = Array.from(files).map(file => file.name);
-      setUploadedFiles(prev => [...prev, ...fileNames]);
+    if (!files) return;
+
+    setIsUploading(true);
+    setUploadError("");
+
+
+    try {
+      for (const file of files) {
+        await apiService.uploadFile(file);
+        setUploadedFiles(prev => [...prev, file.name])
+      }
+    } catch (error) {
+      setUploadError("Upload failed. Something went wrong.")
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -30,9 +46,18 @@ export default function Home() {
     setIsSearching(true);
     setAnswer("");
     setSources([]);
-    
-    // Placeholder: connect real API here
-    setIsSearching(false);
+    setSearchError("");
+
+    try {
+      const response = await apiService.queryDocuments(query);
+      setAnswer(response.answer);
+      setSources(response.results || []);
+    } catch (error){ 
+      setSearchError("Search failed. Something went wrong.")
+    } finally {
+      setIsSearching(false);
+    }
+
   };
 
   return (
@@ -72,13 +97,26 @@ export default function Home() {
                     className="hidden"
                     id="file-upload"
                   />
-                  <Button asChild>
+                  <Button asChild disabled={isUploading}>
                     <label htmlFor="file-upload" className="cursor-pointer">
-                      Choose Files
+                      {isUploading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Uploading...
+                        </>
+                      ) : (
+                        "Choose Files"
+                      )}
                     </label>
                   </Button>
                 </div>
                 
+                {uploadError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-600">{uploadError}</p>
+                  </div>
+                )}
+
                 {uploadedFiles.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-sm font-medium">Uploaded Files:</p>
@@ -132,6 +170,12 @@ export default function Home() {
                     <Skeleton className="h-4 w-full" />
                     <Skeleton className="h-4 w-3/4" />
                     <Skeleton className="h-4 w-1/2" />
+                  </div>
+                )}
+
+                {searchError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-600">{searchError}</p>
                   </div>
                 )}
 
