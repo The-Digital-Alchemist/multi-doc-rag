@@ -1,14 +1,29 @@
-from fastapi import FastAPI, UploadFile, Form
-from backend.core.memory.memory_manager import MemoryManager
-from backend.core.splitters import recursive_token_split
-from backend.core.embeddings import embed_chunks
-from backend.utils.io import read_text_from_path, save_upload
-from backend.core.LLM.llm_engine import generate_answer
+from fastapi import FastAPI, UploadFile, Form, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from typing import List, Optional
+from core.memory.memory_manager import MemoryManager
+from core.splitters import recursive_token_split
+from core.embeddings import embed_chunks
+from utils.io import read_text_from_path, save_upload
+from core.LLM.llm_engine import generate_answer
 import numpy as np
 import os
 
 
-app = FastAPI(title="Multi Doc Rag")
+app = FastAPI(
+    title="Multi Doc RAG",
+    description="A multi-document retrieval augmented generation system",
+    version="1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 FAISS_PATH = "data/index/index.faiss"

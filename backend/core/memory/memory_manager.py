@@ -3,8 +3,8 @@ import sqlite3
 import os
 import numpy as np
 from datetime import datetime
-from backend.core.memory.sqlite_store import init_db
-from backend.core.memory.faiss_store import build_faiss_index
+from core.memory.sqlite_store import init_db
+from core.memory.faiss_store import build_faiss_index
 
 class MemoryManager:
     def __init__(self, faiss_path: str, sqlite_path: str):
