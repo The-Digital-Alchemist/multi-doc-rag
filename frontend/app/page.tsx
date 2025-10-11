@@ -33,7 +33,7 @@ export default function Home() {
         await apiService.uploadFile(file);
         setUploadedFiles(prev => [...prev, file.name])
       }
-    } catch (error) {
+    } catch{
       setUploadError("Upload failed. Something went wrong.")
     } finally {
       setIsUploading(false);
@@ -52,7 +52,7 @@ export default function Home() {
       const response = await apiService.queryDocuments(query);
       setAnswer(response.answer);
       setSources(response.results || []);
-    } catch (error){ 
+    } catch{ 
       setSearchError("Search failed. Something went wrong.")
     } finally {
       setIsSearching(false);
