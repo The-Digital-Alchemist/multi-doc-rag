@@ -1,7 +1,7 @@
 # Backend Dockerfile
 
 # Base image - Python 3.11 slim
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Set working directory
 WORKDIR /app
@@ -18,8 +18,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code
 COPY . .
 
-# Create data directories
-RUN mkdir -p data/index data/uploads data/ingested
+# Create data directories with proper permissions
+RUN mkdir -p data/index data/uploads data/ingested && \
+    chmod -R 755 data/
+
+# Copy and make startup script executable
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
 
 # Set environment variables
 ENV PYTHONPATH=/app
@@ -31,8 +36,8 @@ ENV PYTHONPATH="${PYTHONPATH}:/app"
 # Expose port
 EXPOSE 8000
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application using startup script
+CMD ["/app/start.sh"]
 
 
 
