@@ -1,3 +1,0 @@
-Sample txt Document
-This is a sample PDF file for ingestion testing.
-It contains text that should be extracted cleanly.
