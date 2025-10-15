@@ -20,8 +20,8 @@ import os
 
 # Initialize FastAPI application with metadata
 app = FastAPI(
-    title="Multi Doc RAG",
-    description="A multi-document retrieval augmented generation system",
+    title="Cortex API",
+    description="AI Document Assistant - A multi-document retrieval augmented generation system",
     version="1.0.0"
 )
 
