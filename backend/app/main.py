@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from core.memory.memory_manager import MemoryManager
+from core.memory.lexical_store import LexicalStore
 from core.splitters import recursive_token_split
 from core.embeddings import embed_chunks
 from utils.io import read_text_from_path, save_upload
@@ -44,6 +45,9 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Initialize memory manager for document storage and retrieval
 memory = MemoryManager(FAISS_PATH, SQLITE_PATH)
+
+# Initialize lexical store
+lexical_store = LexicalStore(SQLITE_PATH)
 
 # Load existing index if available
 if os.path.exists(FAISS_PATH):
@@ -94,7 +98,10 @@ async def upload_file(file: UploadFile) -> dict[str, str | int]:
     embeddings = np.array(embed_chunks(chunks))
 
     # Store chunks and embeddings in the knowledge base
-    memory.add_document(chunks, embeddings, doc_id=file.filename, source_filename=file.filename) # type: ignore
+    chunk_ids = memory.add_document(chunks, embeddings, doc_id=file.filename, source_filename=file.filename)
+
+    # Store chunks and chunk ID in the lexical store
+    lexical_store.add_document(chunks, chunk_ids) 
 
     # Persist the updated index
     memory.save_index()

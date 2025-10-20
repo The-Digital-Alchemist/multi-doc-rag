@@ -49,7 +49,7 @@ class MemoryManager:
 
 
 
-    def add_document(self, chunks: list[str], embeddings: np.ndarray, doc_id: str, source_filename: str) -> None:
+    def add_document(self, chunks: list[str], embeddings: np.ndarray, doc_id: str, source_filename: str) -> list[int]:
         """
         Add a document's chunks and embeddings to both SQLite and FAISS storage.
         
@@ -62,6 +62,9 @@ class MemoryManager:
             embeddings (np.ndarray): 2D array of embeddings for each chunk
             doc_id (str): Unique identifier for the document
             source_filename (str): Original filename of the source document
+
+        Returns:
+            list[int]: List of chunk IDs that were created in SQLite
         """
         cursor = self.conn.cursor()
         chunks_ids = []
@@ -91,6 +94,8 @@ class MemoryManager:
 
         # Persist the updated index to disk
         self.save_index()
+
+        return chunks_ids
 
 
     def search(self, query_vector: np.ndarray, k: int = 3) -> list[dict]:
