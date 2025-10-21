@@ -48,7 +48,7 @@ class MemoryManager:
 
 
 
-    def add_document(self, chunks: list[str], embeddings: np.ndarray, doc_id: str, source_filename: str) -> list[int]:
+    def add_document(self, chunks: list[str], embeddings: np.ndarray, doc_id: str, source_filename: str, session_id: str) -> list[int]:
         """
         Add a document's chunks and embeddings to both SQLite and FAISS storage.
         
@@ -61,6 +61,7 @@ class MemoryManager:
             embeddings (np.ndarray): 2D array of embeddings for each chunk
             doc_id (str): Unique identifier for the document
             source_filename (str): Original filename of the source document
+            session_id (str): Session identifier for grouping documents
 
         Returns:
             list[int]: List of chunk IDs that were created in SQLite
@@ -72,9 +73,9 @@ class MemoryManager:
         for idx, chunk in enumerate(chunks):
             created_at = datetime.now().isoformat()
             cursor.execute("""
-            INSERT INTO chunks (doc_id, content, chunk_index, source_filename, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            """, (doc_id, chunk, idx, source_filename, created_at))
+            INSERT INTO chunks (doc_id, content, chunk_index, source_filename, created_at, session_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, (doc_id, chunk, idx, source_filename, created_at, session_id))
             chunks_ids.append(cursor.lastrowid)
             
         self.conn.commit()
@@ -96,17 +97,16 @@ class MemoryManager:
 
         return chunks_ids
 
-
-    def search(self, query_vector: np.ndarray, k: int = 3) -> list[dict]:
+    def search_with_session_id(self, query_vector: np.ndarray, session_id: str, k: int = 3) -> list[dict]:
         """
-        Search for the most similar chunks to a query vector.
+        Search for the most similar chunks to a query vector within a specific session.
         
         This method performs similarity search using the FAISS index and retrieves
-        the corresponding metadata from SQLite. It returns a list of results with
-        similarity scores and chunk information.
+        the corresponding metadata from SQLite, filtered by session_id.
         
         Args:
             query_vector (np.ndarray): Query vector to search for
+            session_id (str): Session ID to filter results by
             k (int, optional): Number of top results to return. Defaults to 3.
             
         Returns:
@@ -116,7 +116,8 @@ class MemoryManager:
                 - doc_id: Document ID this chunk belongs to
                 - content: The actual text content of the chunk
                 - source_filename: Original filename of the source document
-                
+                - session_id: Session ID this chunk belongs to
+                    
         Raises:
             ValueError: If no index is available and cannot be loaded
         """
@@ -130,13 +131,13 @@ class MemoryManager:
         # Prepare query vector for search
         q = np.asarray(query_vector, dtype=np.float32)
         if q.ndim == 1:
-            q = q [None, :]
+            q = q[None, :]
 
         # Normalize for cosine similarity
         faiss.normalize_L2(q)
 
-        # Perform similarity search
-        distances, ids = self.index.search(q, k) # type: ignore
+        # Perform similarity search (get more results to filter)
+        distances, ids = self.index.search(q, k * 3)  # Get 3x more results for filtering
         
         # Filter out invalid results (-1 indicates no match)
         id_list = [int(i) for i in ids[0] if i != -1]
@@ -145,11 +146,13 @@ class MemoryManager:
         if not id_list:
             return []
 
-        # Retrieve metadata for the found chunks
+        # Retrieve metadata for the found chunks with session_id filter
         placeholders = ",".join("?" for _ in id_list)
         rows = self.conn.execute(f"""
-                           SELECT id, doc_id, content, source_filename FROM chunks WHERE id IN ({placeholders})
-                           """, id_list).fetchall()
+                           SELECT id, doc_id, content, source_filename, session_id 
+                           FROM chunks 
+                           WHERE id IN ({placeholders}) AND session_id = ?
+                           """, id_list + [session_id]).fetchall()
 
         # Create a lookup dictionary for efficient metadata retrieval
         by_id = {row["id"]: row for row in rows}
@@ -165,8 +168,12 @@ class MemoryManager:
                     "doc_id": row["doc_id"],
                     "content": row["content"],
                     "source_filename": row["source_filename"],
+                    "session_id": row["session_id"],
                 })
-        return results
+        
+        # Sort by score and return top-k
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return results[:k]
                     
     def save_index(self) -> None:
         """

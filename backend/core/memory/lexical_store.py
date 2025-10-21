@@ -43,16 +43,17 @@ class LexicalStore:
         self._rebuild_from_database()
     
 
-    def add_document(self, chunks: List[str], chunk_ids: List[int]) -> None:
+    def add_document(self, chunks: List[str], chunk_ids: List[int], session_id: str) -> None:
         """
-        Add document chunks to the BM25 lexical index.
+        Add document chunks to the BM25 lexical index with session_id.
         
         This method tokenizes the provided chunks and adds them to the BM25
-        index for lexical search operations.
+        index for lexical search operations, associating them with a session_id.
         
         Args:
             chunks (List[str]): List of text chunks to add
             chunk_ids (List[int]): List of chunk IDs corresponding to each chunk
+            session_id (str): Session ID to associate with these chunks
         """
         # Tokenize all chunks using the preprocessor
         tokenized_chunks = batch_preprocess_texts(chunks)
@@ -63,66 +64,69 @@ class LexicalStore:
         
         # Rebuild BM25 index with updated corpus
         self._build_bm25_index()
-    
 
-    def search(self, query: str, k: int = 3) -> List[Dict]:
-        """
-        Search for the most relevant chunks using BM25 lexical matching.
         
-        This method performs lexical search using the BM25 algorithm and returns
-        results with similarity scores and chunk information.
+    def search_with_session_id(self, query: str, session_id: str, k: int = 3) -> List[Dict]:
+        """
+        Search for the most relevant chunks using BM25 within a specific session.
+        
+        This method performs lexical search using BM25 and retrieves the
+        corresponding metadata from SQLite, filtered by session_id.
         
         Args:
             query (str): Query string to search for
+            session_id (str): Session ID to filter results by
             k (int, optional): Number of top results to return. Defaults to 3.
             
         Returns:
             List[Dict]: List of dictionaries containing:
                 - id: Chunk ID from the database
-                - score: BM25 similarity score (higher is more similar)
+                - score: BM25 relevance score
                 - doc_id: Document ID this chunk belongs to
                 - content: The actual text content of the chunk
                 - source_filename: Original filename of the source document
-                
-        Raises:
-            ValueError: If no index is available
+                - session_id: Session ID this chunk belongs to
         """
-        if self.bm25_index is None:
-            raise ValueError("No BM25 index available. Ensure documents have been added.")
-        
-        # Preprocess the query using the same tokenization rules
+        if not self.bm25_index:
+            return []
+
+        # Preprocess the query
         query_tokens = preprocess_text(query)
         
         # Get BM25 scores for all documents
         scores = self.bm25_index.get_scores(query_tokens)
         
         # Get top-k results
-        top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:k]
+        top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:k * 2]  # Get 2x more for filtering
         
         # Filter out results with zero scores
         results = []
+        cursor = self.conn.cursor()
+        
         for idx in top_indices:
             if scores[idx] > 0:
                 chunk_id = self.chunk_ids[idx]
                 score = scores[idx]
                 
-                # Get metadata from database
-                cursor = self.conn.cursor()
+                # Get metadata from database with session_id filter
                 row = cursor.execute(
-                    "SELECT id, doc_id, content, source_filename FROM chunks WHERE id = ?",
-                    (chunk_id,)
+                    "SELECT id, doc_id, content, source_filename, session_id FROM chunks WHERE id = ? AND session_id = ?",
+                    (chunk_id, session_id)
                 ).fetchone()
                 
                 if row:
                     results.append({
                         "id": row["id"],
-                        "score": score,
+                        "score": float(score),
                         "doc_id": row["doc_id"],
                         "content": row["content"],
                         "source_filename": row["source_filename"],
+                        "session_id": row["session_id"],
                     })
         
-        return results
+        # Sort by score and return top-k
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return results[:k]
     
 
     def _build_bm25_index(self) -> None:
