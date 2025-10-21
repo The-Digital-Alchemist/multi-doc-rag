@@ -269,13 +269,36 @@ export default function Home() {
               <div className="space-y-4 animate-fade-in">
                 <Card className="shadow-sm border-gray-200 bg-white">
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-base font-medium flex items-center gap-2">
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                      Answer
+                    <CardTitle className="text-base font-medium flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        Answer
+                      </div>
+                      {sources.length > 0 && (
+                        <Badge 
+                          variant="secondary" 
+                          className={`text-xs ${
+                            sources[0]?.score > 0.8 
+                              ? 'bg-green-50 text-green-700 border-green-200' 
+                              : sources[0]?.score > 0.6 
+                              ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                              : 'bg-red-50 text-red-700 border-red-200'
+                          }`}
+                        >
+                          {sources[0]?.score > 0.8 ? 'High' : sources[0]?.score > 0.6 ? 'Medium' : 'Low'} Confidence
+                        </Badge>
+                      )}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="pt-0">
                     <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{answer}</p>
+                    {sources.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <p className="text-xs text-gray-500">
+                          Confidence based on {sources.length} source{sources.length > 1 ? 's' : ''} with {sources[0]?.score > 0.8 ? 'high' : sources[0]?.score > 0.6 ? 'medium' : 'low'} relevance
+                        </p>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
                 
@@ -313,7 +336,16 @@ export default function Home() {
                                   </span>
                                 )}
                               </div>
-                              <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                              <Badge 
+                                variant="secondary" 
+                                className={`text-xs ${
+                                  source.score > 0.8 
+                                    ? 'bg-green-50 text-green-700 border-green-200' 
+                                    : source.score > 0.6 
+                                    ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                                    : 'bg-red-50 text-red-700 border-red-200'
+                                }`}
+                              >
                                 {(source.score * 100).toFixed(0)}% match
                               </Badge>
                             </div>
