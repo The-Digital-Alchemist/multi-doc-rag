@@ -6,10 +6,8 @@ using a RAG system. It supports multiple document formats and provides semantic
 search capabilities with AI-powered answer generation.
 """
 
-from fastapi import FastAPI, UploadFile, Form, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from typing import List, Optional
 from core.memory.memory_manager import MemoryManager
 from core.memory.lexical_store import LexicalStore
 from core.splitters import recursive_token_split
@@ -76,22 +74,23 @@ async def ping() -> dict[str, str]:
 
 
 @app.post("/upload")
-async def upload_file(file: UploadFile) -> dict[str, str | int]:
+async def upload_file(file: UploadFile, session_id: str = Form(...)) -> dict[str, str | int]:
     """
     Upload and process a document for ingestion into the RAG system.
     
     This endpoint handles file uploads, extracts text content, splits it into chunks,
-    generates embeddings, and stores everything in the knowledge base.
+    generates embeddings, and stores everything in the knowledge base with session isolation.
     
     Args:
         file (UploadFile): The uploaded file (supports .txt, .pdf, .docx)
+        session_id (str): Session ID to associate this document with
         
     Returns:
         dict[str, str | int]: Response containing status and number of chunks added
         
     Raises:
         HTTPException: If file processing fails or unsupported file type
-    """
+    """   
     # Save uploaded file to disk
     path = save_upload(file, UPLOAD_DIR)
 
@@ -104,15 +103,15 @@ async def upload_file(file: UploadFile) -> dict[str, str | int]:
     # Generate embeddings for each chunk
     embeddings = np.array(embed_chunks(chunks))
 
-    # Store chunks and embeddings in the knowledge base
-    chunk_ids = memory.add_document(chunks, embeddings, doc_id=file.filename, source_filename=file.filename)
+    # Store chunks and embeddings in the knowledge base with session_id
+    chunk_ids = memory.add_document(chunks, embeddings, doc_id=file.filename, source_filename=file.filename, session_id=session_id)
 
-    # Store chunks and chunk ID in the lexical store
-    lexical_store.add_document(chunks, chunk_ids) 
+    # Store chunks and chunk ID in the lexical store with session_id
+    lexical_store.add_document(chunks, chunk_ids, session_id) 
 
     # Persist the updated index
     memory.save_index()
-    return {"status": "OK", "chunks_added": len(chunks)}
+    return {"status": "OK", "chunks_added": len(chunks), "session_id": session_id}
 
 
 
@@ -177,7 +176,7 @@ def fuse_search_results(semantic_results: list[dict], lexical_results: list[dict
 
 
 @app.post("/query")
-async def query_rag(query: str = Form(...), k: int = 3) -> dict[str, str | list[dict]]:
+async def query_rag(query: str = Form(...), k: int = 3, session_id: str = Form(...)) -> dict[str, str | list[dict]]:
     """
     Query the RAG system to get an AI-generated answer based on document content.
     
@@ -187,6 +186,7 @@ async def query_rag(query: str = Form(...), k: int = 3) -> dict[str, str | list[
     Args:
         query (str): The user's question or query
         k (int, optional): Number of most relevant chunks to retrieve. Defaults to 3.
+        session_id (str): Session ID to filter search results
         
     Returns:
         dict[str, str | list[dict]]: Response containing:
@@ -204,11 +204,11 @@ async def query_rag(query: str = Form(...), k: int = 3) -> dict[str, str | list[
         # Generate query embedding for the semantic search
         q_emb = np.array(embed_chunks([enriched_query]))
         
-        # Perform semantic search
-        semantic_results = memory.search(q_emb, k=k)
+        # Perform semantic search with session_id filtering
+        semantic_results = memory.search_with_session_id(q_emb, session_id, k=k)
 
-        # Perform lexical search
-        lexical_results = lexical_store.search(enriched_query, k=k)
+        # Perform lexical search with session_id filtering
+        lexical_results = lexical_store.search_with_session_id(enriched_query, session_id, k=k)
 
         # Fuse results from both searches 
         results = fuse_search_results(semantic_results, lexical_results, k=k)
@@ -230,6 +230,3 @@ async def query_rag(query: str = Form(...), k: int = 3) -> dict[str, str | list[
     except Exception as e:
         print(f"Error querying RAG: {e}")
         return {"error": "Failed to query RAG"}
-
-
-
