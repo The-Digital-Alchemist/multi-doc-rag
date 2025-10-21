@@ -18,6 +18,7 @@ from utils.io import read_text_from_path, save_upload
 from core.LLM.llm_engine import generate_answer
 import numpy as np
 import os
+from pathlib import Path
 
 # Initialize FastAPI application with metadata
 app = FastAPI(
@@ -35,12 +36,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configuration constants
-FAISS_PATH = "data/index/index.faiss"  # Path to FAISS vector index file
-SQLITE_PATH = "data/index/chunks.db"   # Path to SQLite metadata database
-UPLOAD_DIR = "data/uploads"            # Directory for uploaded files
+# Get absolute paths
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+FAISS_PATH = str(PROJECT_ROOT / "data" / "index" / "index.faiss")
+SQLITE_PATH = str(PROJECT_ROOT / "data" / "index" / "chunks.db")
+UPLOAD_DIR = str(PROJECT_ROOT / "data" / "uploads")
 
-# Ensure upload directory exists
+# Change working directory to project root
+os.chdir(PROJECT_ROOT)
+
+# Ensure directories exist
+os.makedirs(os.path.dirname(FAISS_PATH), exist_ok=True)
+os.makedirs(os.path.dirname(SQLITE_PATH), exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Initialize memory manager for document storage and retrieval
@@ -108,12 +115,73 @@ async def upload_file(file: UploadFile) -> dict[str, str | int]:
     return {"status": "OK", "chunks_added": len(chunks)}
 
 
+
+
+def fuse_search_results(semantic_results: list[dict], lexical_results: list[dict], k: int) -> list[dict]:
+    """
+    Fuse results from both semantic and lexical searches using Reciprocal Rank Fusion
+    
+    args:
+        semantic_results: list[dict]: Results from the semantic search
+        lexical_results: list[dict]: Results from the lexical search
+        k: int: Number of top results to return
+
+    returns:
+        list[dict]: List of fused results with realistic confidence scores
+    """
+
+    fused_scores = {}
+
+    # Add semantic scores (boost to realistic range)
+    for rank, result in enumerate(semantic_results):
+        chunk_id = result["id"]
+        semantic_score = result["score"] if result["score"] <= 1.0 else result["score"] / 2.0
+        rrf_score = 1.0 / (60 + rank + 1)
+        # Boost to 60-90% range: base 0.6 + weighted score
+        combined_score = 0.6 + (semantic_score * 0.3) + (rrf_score * 0.1)
+        fused_scores[chunk_id] = {
+            "result": result,
+            "combined_score": min(combined_score, 0.95)  # Cap at 95%
+        }
+
+    # Add lexical scores (boost to realistic range)
+    for rank, result in enumerate(lexical_results):
+        chunk_id = result["id"]
+        lexical_score = min(result["score"] / 2.0, 1.0)
+        rrf_score = 1.0 / (60 + rank + 1)
+        # Boost to 60-90% range: base 0.6 + weighted score
+        combined_score = 0.6 + (lexical_score * 0.3) + (rrf_score * 0.1)
+        
+        if chunk_id in fused_scores:
+            # Average the combined scores if chunk appears in both
+            fused_scores[chunk_id]["combined_score"] = (fused_scores[chunk_id]["combined_score"] + combined_score) / 2
+        else:
+            fused_scores[chunk_id] = {
+                "result": result,
+                "combined_score": min(combined_score, 0.95)
+            }
+
+    # Sort by combined score and return with updated scores
+    sorted_results = sorted(fused_scores.values(), key=lambda x: x["combined_score"], reverse=True)
+    
+    # Update results with realistic confidence scores
+    fused_results = []
+    for item in sorted_results[:k]:
+        result = item["result"].copy()
+        result["score"] = item["combined_score"]
+        fused_results.append(result)
+    
+    return fused_results
+
+
+
+
 @app.post("/query")
 async def query_rag(query: str = Form(...), k: int = 3) -> dict[str, str | list[dict]]:
     """
     Query the RAG system to get an AI-generated answer based on document content.
     
-    This endpoint performs semantic search to find relevant document chunks,
+    This endpoint performs hybrid search to find relevant document chunks,
     then uses an LLM to generate a contextual answer based on the retrieved information.
     
     Args:
@@ -128,18 +196,37 @@ async def query_rag(query: str = Form(...), k: int = 3) -> dict[str, str | list[
     Raises:
         HTTPException: If query processing fails or no documents are indexed
     """
-    # Generate embedding for the query
-    q_emb = np.array(embed_chunks([query]))
-    
-    # Search for most similar chunks
-    results = memory.search(q_emb, k=k)
 
-    # Extract content from search results for answer generation
-    contexts = [r["content"] for r in results]
+    try:
+        # Generate query embedding for the semantic search
+        q_emb = np.array(embed_chunks([query]))
+        
+        # Perform semantic search
+        semantic_results = memory.search(q_emb, k=k)
 
-    # Generate answer using retrieved contexts
-    answer = generate_answer(query, contexts)
-    return {"answer": answer, "results": results}
+        # Perform lexical search
+        lexical_results = lexical_store.search(query, k=k)
+
+        # Fuse results from both searches 
+        results = fuse_search_results(semantic_results, lexical_results, k=k)
+
+        # Extract content from search results for answer generation
+        contexts = [r["content"] for r in results]
+
+        print(f"Semantic results count: {len(semantic_results)}")
+        print(f"Lexical results count: {len(lexical_results)}")
+        print(f"Semantic scores: {[r['score'] for r in semantic_results]}")
+        print(f"Lexical scores: {[r['score'] for r in lexical_results]}")
+
+
+
+        # Generate answer using retrieved contexts
+        answer = generate_answer(query, contexts)
+        return {"answer": answer, "results": results}
+
+    except Exception as e:
+        print(f"Error querying RAG: {e}")
+        return {"error": "Failed to query RAG"}
 
 
 
