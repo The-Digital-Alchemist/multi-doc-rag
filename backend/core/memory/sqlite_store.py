@@ -33,7 +33,8 @@ def init_db(path: str) -> None:
                    content TEXT,
                    chunk_index INTEGER,
                    source_filename TEXT,
-                   created_at TEXT
+                   created_at TEXT,
+                   session_id TEXT
                    )""")
     conn.commit()
     conn.close()
