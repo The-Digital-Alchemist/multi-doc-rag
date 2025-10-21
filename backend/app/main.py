@@ -15,7 +15,7 @@ from core.memory.lexical_store import LexicalStore
 from core.splitters import recursive_token_split
 from core.embeddings import embed_chunks
 from utils.io import read_text_from_path, save_upload
-from core.LLM.llm_engine import generate_answer
+from core.LLM.llm_engine import generate_answer, enrich_query
 import numpy as np
 import os
 from pathlib import Path
@@ -198,14 +198,17 @@ async def query_rag(query: str = Form(...), k: int = 3) -> dict[str, str | list[
     """
 
     try:
+        # Enrich the query
+        enriched_query = enrich_query(query)
+
         # Generate query embedding for the semantic search
-        q_emb = np.array(embed_chunks([query]))
+        q_emb = np.array(embed_chunks([enriched_query]))
         
         # Perform semantic search
         semantic_results = memory.search(q_emb, k=k)
 
         # Perform lexical search
-        lexical_results = lexical_store.search(query, k=k)
+        lexical_results = lexical_store.search(enriched_query, k=k)
 
         # Fuse results from both searches 
         results = fuse_search_results(semantic_results, lexical_results, k=k)
@@ -221,7 +224,7 @@ async def query_rag(query: str = Form(...), k: int = 3) -> dict[str, str | list[
 
 
         # Generate answer using retrieved contexts
-        answer = generate_answer(query, contexts)
+        answer = generate_answer(enriched_query, contexts)
         return {"answer": answer, "results": results}
 
     except Exception as e:

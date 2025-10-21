@@ -65,3 +65,23 @@ def generate_answer(query: str, contexts: list[str]) -> str:
         temperature=0.2  # Low temperature for more deterministic, factual responses
     )
     return response.choices[0].message.content.strip() # type: ignore
+
+
+def enrich_query(query: str) -> str:
+    """
+    Enrich a user query using an LLM.
+    """
+    prompt = f"""
+    You are a helpful assistant that enriches user queries.
+    You will be given a user query and you will need to enrich it by adding more details to it.
+    The enriched query should be more specific and detailed.
+    The user query is: {query}
+    The enriched query is:
+    """
+    client = get_client()
+    response = client.chat.completions.create(
+        model="gpt-4o-mini", 
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3 # Slighlty higher for creativity and less deterministic
+    )
+    return response.choices[0].message.content.strip()
