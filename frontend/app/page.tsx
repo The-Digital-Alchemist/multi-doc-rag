@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Upload, Search, FileText, Loader2, ChevronDown, ChevronUp, Trash2, File } from "lucide-react";
 import { apiService } from "@/lib/api";
+import { sessionManager } from "@/lib/session";
 
 export default function Home() {
   const [query, setQuery] = useState("");
@@ -20,6 +21,7 @@ export default function Home() {
   const [uploadError, setUploadError] = useState("");
   const [searchError, setSearchError] = useState("");
   const [showSources, setShowSources] = useState(true);
+  const [sessionId, setSessionId] = useState<string>(sessionManager.getSessionId());
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -31,7 +33,7 @@ export default function Home() {
 
     try {
       for (const file of files) {
-        await apiService.uploadFile(file);
+        await apiService.uploadFile(file, sessionId);
         setUploadedFiles(prev => [...prev, file.name])
       }
     } catch{
@@ -51,7 +53,7 @@ export default function Home() {
     setShowSources(true);
 
     try {
-      const response = await apiService.queryDocuments(query);
+      const response = await apiService.queryDocuments(query, sessionId);
       setAnswer(response.answer);
       setSources(response.results || []);
     } catch{ 
@@ -62,6 +64,12 @@ export default function Home() {
   };
 
   const handleClearFiles = () => {
+    // Clear current session and generate new one
+    sessionManager.clearSession();
+    const newSessionId = sessionManager.getSessionId();
+    setSessionId(newSessionId);
+    
+    // Clear UI state
     setUploadedFiles([]);
     setAnswer("");
     setSources([]);
