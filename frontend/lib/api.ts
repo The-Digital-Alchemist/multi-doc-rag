@@ -33,9 +33,10 @@ class ApiService {
     }
   }
 
-  async uploadFile(file: File) {
+  async uploadFile(file: File, sessionId: string) {
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("session_id", sessionId);
 
     return this.request("/upload", {
       method: "POST",
@@ -44,9 +45,10 @@ class ApiService {
     });
   }
 
-  async queryDocuments (query: string, k: number = 3) {
+  async queryDocuments(query: string, sessionId: string, k: number = 3) {
     const formData = new FormData();
     formData.append("query", query);
+    formData.append("session_id", sessionId);
     formData.append("k", k.toString());
 
     return this.request("/query", {
@@ -62,6 +64,7 @@ class ApiService {
       headers: {},
     });
   }
+
 }
 
 export const apiService = new ApiService();
