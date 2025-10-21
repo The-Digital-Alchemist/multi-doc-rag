@@ -39,7 +39,6 @@ class MemoryManager:
         init_db(sqlite_path)
         self.conn = sqlite3.connect(sqlite_path)
         self.conn.row_factory = sqlite3.Row  # Enable dict-like access to rows
-        os.makedirs(os.path.dirname(sqlite_path), exist_ok=True)
 
         # Load existing FAISS index if available
         if os.path.exists(faiss_path):
