@@ -14,6 +14,7 @@ from core.splitters import recursive_token_split
 from core.embeddings import embed_chunks
 from utils.io import read_text_from_path, save_upload
 from core.LLM.llm_engine import generate_answer, enrich_query
+from core.memory.conversation_memory import ConversationMemory
 import numpy as np
 import os
 from pathlib import Path
@@ -53,6 +54,9 @@ memory = MemoryManager(FAISS_PATH, SQLITE_PATH)
 
 # Initialize lexical store
 lexical_store = LexicalStore(SQLITE_PATH)
+
+# Initialize conversation memory for each session
+session_conversation_memory = {}
 
 # Load existing index if available
 if os.path.exists(FAISS_PATH):
@@ -197,6 +201,12 @@ async def query_rag(query: str = Form(...), k: int = 3, session_id: str = Form(.
         HTTPException: If query processing fails or no documents are indexed
     """
 
+    if session_id not in session_conversation_memory:
+        session_conversation_memory[session_id] = ConversationMemory(session_id)
+    
+
+    convo_memory = session_conversation_memory[session_id]
+
     try:
         # Enrich the query
         enriched_query = enrich_query(query)
@@ -216,16 +226,15 @@ async def query_rag(query: str = Form(...), k: int = 3, session_id: str = Form(.
         # Extract content from search results for answer generation
         contexts = [r["content"] for r in results]
 
-        print(f"Semantic results count: {len(semantic_results)}")
-        print(f"Lexical results count: {len(lexical_results)}")
-        print(f"Semantic scores: {[r['score'] for r in semantic_results]}")
-        print(f"Lexical scores: {[r['score'] for r in lexical_results]}")
-
-
 
         # Generate answer using retrieved contexts
-        answer = generate_answer(enriched_query, contexts)
+        answer = generate_answer(enriched_query, contexts, convo_memory)
+
+        # Add message to conversation memory
+        convo_memory.add_message(query, answer)
+
         return {"answer": answer, "results": results}
+
 
     except Exception as e:
         print(f"Error querying RAG: {e}")

@@ -7,6 +7,7 @@ user queries with retrieved document contexts using OpenAI's GPT models.
 
 from openai import OpenAI
 import os
+from core.memory.conversation_memory import ConversationMemory
 
 
 def get_client() -> OpenAI:
@@ -25,7 +26,7 @@ def get_client() -> OpenAI:
     return OpenAI(api_key=api_key)
 
 
-def generate_answer(query: str, contexts: list[str]) -> str:
+def generate_answer(query: str, contexts: list[str], memory: ConversationMemory) -> str:
     """
     Generate an answer to a user query using retrieved document contexts.
     
@@ -36,7 +37,7 @@ def generate_answer(query: str, contexts: list[str]) -> str:
     Args:
         query (str): The user's question or query
         contexts (list[str]): List of relevant document chunks retrieved from the knowledge base
-        
+        memory (ConversationMemory): Conversation memory for the session
     Returns:
         str: Generated answer based on the query and contexts
         
@@ -45,14 +46,22 @@ def generate_answer(query: str, contexts: list[str]) -> str:
         Exception: If OpenAI API call fails
     """
     client = get_client()
-    
+    recent_memory = memory.get_memory()
+
+
     # Construct a prompt that instructs the model to answer using only the provided contexts
     prompt = f""""You are an assistant with access to retrieved contexts from various documents.
     Using the information you find in the documents, answer the user query using only the contexts below.
+    There might be Questions and Answers in the context that you can use to answer the user query.
+    If the user query is a question, you should answer it based on the context.
+    If there are no questions and answers present in the context, you should answer the user query based on the context.
 
 
     Context: 
     {chr(10).join(contexts)}
+
+    Recent Memory:
+    {chr(10).join([f"Q: {item['query']}\nA: {item['response']}" for item in recent_memory])}
 
     Query: {query}
 
@@ -71,13 +80,18 @@ def enrich_query(query: str) -> str:
     """
     Enrich a user query using an LLM.
     """
-    prompt = f"""
-    You are a helpful assistant that enriches user queries.
-    You will be given a user query and you will need to enrich it by adding more details to it.
-    The enriched query should be more specific and detailed.
-    The user query is: {query}
-    The enriched query is:
-    """
+    prompt = f"""You are a helpful assistant that enriches user queries for document search.
+    Take the user's query and expand it with:
+    - Synonyms and related terms
+    - Alternative phrasings
+    - Contextual variations
+    - Technical terms that might appear in documents
+    
+    Keep the enrichment focused and relevant to the original query.
+    Don't assume specific contexts unless the query explicitly mentions them.
+    
+    Original query: {query}
+    Enriched query:"""
     client = get_client()
     response = client.chat.completions.create(
         model="gpt-4o-mini", 
