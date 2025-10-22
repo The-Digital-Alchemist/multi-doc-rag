@@ -9,14 +9,16 @@ export class SessionManager {
   private sessionId: string | null = null;
 
   constructor() {
-    // Load existing session from localStorage
-    try {
-      const stored = localStorage.getItem(SESSION_KEY);
-      if (stored) {
-        this.sessionId = stored;
+    // Load existing session from localStorage (only in browser)
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(SESSION_KEY);
+        if (stored) {
+          this.sessionId = stored;
+        }
+      } catch (error) {
+        console.warn('Failed to load session from localStorage:', error);
       }
-    } catch (error) {
-      console.warn('Failed to load session from localStorage:', error);
     }
   }
 
@@ -36,7 +38,9 @@ export class SessionManager {
    */
   clearSession(): void {
     this.sessionId = null;
-    localStorage.removeItem(SESSION_KEY);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(SESSION_KEY);
+    }
   }
 
   /**
@@ -53,12 +57,14 @@ export class SessionManager {
    * Save session to localStorage
    */
   private saveSession(): void {
-    try {
-      if (this.sessionId) {
-        localStorage.setItem(SESSION_KEY, this.sessionId);
+    if (typeof window !== 'undefined') {
+      try {
+        if (this.sessionId) {
+          localStorage.setItem(SESSION_KEY, this.sessionId);
+        }
+      } catch (error) {
+        console.warn('Failed to save session to localStorage:', error);
       }
-    } catch (error) {
-      console.warn('Failed to save session to localStorage:', error);
     }
   }
 }
