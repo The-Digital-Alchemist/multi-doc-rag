@@ -10,23 +10,26 @@ import numpy as np
 import os
 
 
-def get_client() -> OpenAI:
+def get_client(api_key: str | None = None) -> OpenAI:
     """
-    Initialize and return an OpenAI client using the API key from environment variables.
+    Initialize and return an OpenAI client using the provided API key or environment variables.
+    
+    Args:
+        api_key (str | None): Optional API key. If not provided, uses OPENAI_API_KEY environment variable.
     
     Returns:
         OpenAI: Configured OpenAI client instance
         
     Raises:
-        ValueError: If OPENAI_API_KEY environment variable is not set
+        ValueError: If no API key is provided and OPENAI_API_KEY environment variable is not set
     """
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY environment variable is required")
-    return OpenAI(api_key=api_key)
+    key = api_key or os.getenv("OPENAI_API_KEY")
+    if not key:
+        raise ValueError("API key is required. Provide it as a parameter or set OPENAI_API_KEY environment variable")
+    return OpenAI(api_key=key)
 
 
-def embed_chunks(chunks: list[str], model: str = "text-embedding-3-large") -> list[np.ndarray]:
+def embed_chunks(chunks: list[str], model: str = "text-embedding-3-large", api_key: str | None = None) -> list[np.ndarray]:
     """
     Generate vector embeddings for a list of text chunks using OpenAI's embedding model.
     
@@ -37,6 +40,7 @@ def embed_chunks(chunks: list[str], model: str = "text-embedding-3-large") -> li
     Args:
         chunks (list[str]): List of text chunks to embed
         model (str, optional): OpenAI embedding model to use. Defaults to "text-embedding-3-large".
+        api_key (str | None): Optional API key. If not provided, uses environment variable.
         
     Returns:
         list[np.ndarray]: List of numpy arrays representing the embeddings for each chunk
@@ -45,7 +49,7 @@ def embed_chunks(chunks: list[str], model: str = "text-embedding-3-large") -> li
         ValueError: If OpenAI API key is not configured
         Exception: If OpenAI API call fails
     """
-    client = get_client()
+    client = get_client(api_key)
     response = client.embeddings.create(
         model=model,
         input=chunks

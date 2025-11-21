@@ -10,23 +10,26 @@ import os
 from core.memory.conversation_memory import ConversationMemory
 
 
-def get_client() -> OpenAI:
+def get_client(api_key: str | None = None) -> OpenAI:
     """
-    Initialize and return an OpenAI client using the API key from environment variables.
+    Initialize and return an OpenAI client using the provided API key or environment variables.
+    
+    Args:
+        api_key (str | None): Optional API key. If not provided, uses OPENAI_API_KEY environment variable.
     
     Returns:
         OpenAI: Configured OpenAI client instance
         
     Raises:
-        ValueError: If OPENAI_API_KEY environment variable is not set
+        ValueError: If no API key is provided and OPENAI_API_KEY environment variable is not set
     """
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY environment variable is required")
-    return OpenAI(api_key=api_key)
+    key = api_key or os.getenv("OPENAI_API_KEY")
+    if not key:
+        raise ValueError("API key is required. Provide it as a parameter or set OPENAI_API_KEY environment variable")
+    return OpenAI(api_key=key)
 
 
-def generate_answer(query: str, contexts: list[str], memory: ConversationMemory) -> str:
+def generate_answer(query: str, contexts: list[str], memory: ConversationMemory, api_key: str | None = None) -> str:
     """
     Generate an answer to a user query using retrieved document contexts.
     
@@ -38,6 +41,7 @@ def generate_answer(query: str, contexts: list[str], memory: ConversationMemory)
         query (str): The user's question or query
         contexts (list[str]): List of relevant document chunks retrieved from the knowledge base
         memory (ConversationMemory): Conversation memory for the session
+        api_key (str | None): Optional API key. If not provided, uses environment variable.
     Returns:
         str: Generated answer based on the query and contexts
         
@@ -45,7 +49,7 @@ def generate_answer(query: str, contexts: list[str], memory: ConversationMemory)
         ValueError: If OpenAI API key is not configured
         Exception: If OpenAI API call fails
     """
-    client = get_client()
+    client = get_client(api_key)
     recent_memory = memory.get_memory()
 
 
@@ -76,9 +80,16 @@ def generate_answer(query: str, contexts: list[str], memory: ConversationMemory)
     return response.choices[0].message.content.strip() # type: ignore
 
 
-def enrich_query(query: str) -> str:
+def enrich_query(query: str, api_key: str | None = None) -> str:
     """
     Enrich a user query using an LLM.
+    
+    Args:
+        query (str): The user's original query
+        api_key (str | None): Optional API key. If not provided, uses environment variable.
+        
+    Returns:
+        str: Enriched query with synonyms and related terms
     """
     prompt = f"""You are a helpful assistant that enriches user queries for document search.
     Take the user's query and expand it with:
@@ -92,7 +103,7 @@ def enrich_query(query: str) -> str:
     
     Original query: {query}
     Enriched query:"""
-    client = get_client()
+    client = get_client(api_key)
     response = client.chat.completions.create(
         model="gpt-4o-mini", 
         messages=[{"role": "user", "content": prompt}],

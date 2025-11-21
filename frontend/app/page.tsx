@@ -7,9 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Upload, Search, FileText, Loader2, ChevronDown, ChevronUp, Trash2, File } from "lucide-react";
+import { Upload, Search, FileText, Loader2, ChevronDown, ChevronUp, Trash2, File, CheckCircle2 } from "lucide-react";
 import { apiService } from "@/lib/api";
 import { sessionManager } from "@/lib/session";
+import { ApiKeyModal } from "@/components/ui/api-key-modal";
 
 export default function Home() {
   const [query, setQuery] = useState("");
@@ -22,6 +23,15 @@ export default function Home() {
   const [searchError, setSearchError] = useState("");
   const [showSources, setShowSources] = useState(true);
   const [sessionId, setSessionId] = useState<string>(sessionManager.getSessionId());
+  const [apiKey, setApiKey] = useState<string>("");
+  const [showApiKeyModal, setShowApiKeyModal] = useState(true);
+  const [apiKeyError, setApiKeyError] = useState("");
+
+  const handleApiKeySubmit = (key: string) => {
+    setApiKey(key);
+    setApiKeyError("");
+    setShowApiKeyModal(false);
+  };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -33,11 +43,18 @@ export default function Home() {
 
     try {
       for (const file of files) {
-        await apiService.uploadFile(file, sessionId);
+        await apiService.uploadFile(file, sessionId, apiKey);
         setUploadedFiles(prev => [...prev, file.name])
       }
-    } catch{
-      setUploadError("Upload failed. Something went wrong.")
+    } catch(error: unknown){
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes("401") || errorMessage.includes("API key")) {
+        setUploadError("Invalid API key. Please check your OpenAI API key.");
+        setApiKeyError("Invalid API key. Please check your OpenAI API key.");
+        setShowApiKeyModal(true);
+      } else {
+        setUploadError("Upload failed. Something went wrong.")
+      }
     } finally {
       setIsUploading(false);
     }
@@ -53,11 +70,18 @@ export default function Home() {
     setShowSources(true);
 
     try {
-      const response = await apiService.queryDocuments(query, sessionId);
+      const response = await apiService.queryDocuments(query, sessionId, apiKey);
       setAnswer(response.answer);
       setSources(response.results || []);
-    } catch{ 
-      setSearchError("Search failed. Something went wrong.")
+    } catch(error: unknown){ 
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes("401") || errorMessage.includes("API key")) {
+        setSearchError("Invalid API key. Please check your OpenAI API key.");
+        setApiKeyError("Invalid API key. Please check your OpenAI API key.");
+        setShowApiKeyModal(true);
+      } else {
+        setSearchError("Search failed. Something went wrong.")
+      }
     } finally {
       setIsSearching(false);
     }
@@ -76,6 +100,11 @@ export default function Home() {
     setQuery("");
   };
 
+  const handleChangeApiKey = () => {
+    setShowApiKeyModal(true);
+    setApiKeyError("");
+  };
+
   const getFileIcon = (filename: string) => {
     const ext = filename.split('.').pop()?.toLowerCase();
     if (ext === 'pdf') return '📄';
@@ -86,6 +115,13 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[var(--background)]">
+      {/* API Key Modal */}
+      <ApiKeyModal 
+        isOpen={showApiKeyModal} 
+        onSubmit={handleApiKeySubmit}
+        error={apiKeyError}
+      />
+
       {/* Header - Sticky */}
       <header className="sticky top-0 z-10 bg-white border-b border-gray-200 shadow-sm">
         <div className="container mx-auto px-6 py-5">
@@ -96,13 +132,25 @@ export default function Home() {
                 Upload documents and ask questions powered by AI
               </p>
             </div>
-            {uploadedFiles.length > 0 && (
-              <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4">
+              {apiKey && (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-lg">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <span className="text-xs font-medium text-green-700">API Key Active</span>
+                  <button 
+                    onClick={handleChangeApiKey}
+                    className="ml-1 text-xs text-green-600 hover:text-green-800 underline"
+                  >
+                    Change
+                  </button>
+                </div>
+              )}
+              {uploadedFiles.length > 0 && (
                 <Badge variant="secondary" className="text-sm px-3 py-1">
                   {uploadedFiles.length} {uploadedFiles.length === 1 ? 'document' : 'documents'}
                 </Badge>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -148,11 +196,12 @@ export default function Home() {
                     onChange={handleFileUpload}
                     className="hidden"
                     id="file-upload"
+                    disabled={!apiKey}
                   />
                   <Button 
                     asChild 
-                    disabled={isUploading}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    disabled={isUploading || !apiKey}
+                    className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
                     size="sm"
                   >
                     <label htmlFor="file-upload" className="cursor-pointer">
@@ -219,12 +268,12 @@ export default function Home() {
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                      disabled={isSearching || uploadedFiles.length === 0}
+                      disabled={isSearching || uploadedFiles.length === 0 || !apiKey}
                       className="h-12 text-base border-gray-200 focus:border-blue-500 focus:ring-blue-500"
                     />
                     <Button 
                       onClick={handleSearch} 
-                      disabled={!query.trim() || isSearching || uploadedFiles.length === 0}
+                      disabled={!query.trim() || isSearching || uploadedFiles.length === 0 || !apiKey}
                       className="h-12 px-6 bg-blue-600 hover:bg-blue-700 text-white"
                     >
                       {isSearching ? (
@@ -235,9 +284,11 @@ export default function Home() {
                     </Button>
                   </div>
                   
-                  {uploadedFiles.length === 0 && (
+                  {!apiKey ? (
+                    <p className="text-sm text-gray-400 text-center">Please enter your API key to continue</p>
+                  ) : uploadedFiles.length === 0 ? (
                     <p className="text-sm text-gray-400 text-center">Upload documents first to start querying</p>
-                  )}
+                  ) : null}
                 </div>
               </CardContent>
             </Card>

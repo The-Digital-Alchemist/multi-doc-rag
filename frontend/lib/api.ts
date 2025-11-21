@@ -33,10 +33,13 @@ class ApiService {
     }
   }
 
-  async uploadFile(file: File, sessionId: string) {
+  async uploadFile(file: File, sessionId: string, apiKey?: string) {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("session_id", sessionId);
+    if (apiKey) {
+      formData.append("api_key", apiKey);
+    }
 
     return this.request("/upload", {
       method: "POST",
@@ -45,11 +48,14 @@ class ApiService {
     });
   }
 
-  async queryDocuments(query: string, sessionId: string, k: number = 3) {
+  async queryDocuments(query: string, sessionId: string, apiKey?: string, k: number = 3) {
     const formData = new FormData();
     formData.append("query", query);
     formData.append("session_id", sessionId);
     formData.append("k", k.toString());
+    if (apiKey) {
+      formData.append("api_key", apiKey);
+    }
 
     return this.request("/query", {
       method: "POST",

@@ -78,7 +78,7 @@ async def ping() -> dict[str, str]:
 
 
 @app.post("/upload")
-async def upload_file(file: UploadFile, session_id: str = Form(...)) -> dict[str, str | int]:
+async def upload_file(file: UploadFile, session_id: str = Form(...), api_key: str = Form(None)) -> dict[str, str | int]:
     """
     Upload and process a document for ingestion into the RAG system.
     
@@ -88,6 +88,7 @@ async def upload_file(file: UploadFile, session_id: str = Form(...)) -> dict[str
     Args:
         file (UploadFile): The uploaded file (supports .txt, .pdf, .docx)
         session_id (str): Session ID to associate this document with
+        api_key (str): Optional OpenAI API key. If not provided, uses environment variable.
         
     Returns:
         dict[str, str | int]: Response containing status and number of chunks added
@@ -95,27 +96,34 @@ async def upload_file(file: UploadFile, session_id: str = Form(...)) -> dict[str
     Raises:
         HTTPException: If file processing fails or unsupported file type
     """   
-    # Save uploaded file to disk
-    path = save_upload(file, UPLOAD_DIR)
+    try:
+        # Save uploaded file to disk
+        path = save_upload(file, UPLOAD_DIR)
 
-    # Extract text content from the file
-    text = read_text_from_path(path)
+        # Extract text content from the file
+        text = read_text_from_path(path)
 
-    # Split text into manageable chunks with overlap
-    chunks = recursive_token_split(text)
+        # Split text into manageable chunks with overlap
+        chunks = recursive_token_split(text)
 
-    # Generate embeddings for each chunk
-    embeddings = np.array(embed_chunks(chunks))
+        # Generate embeddings for each chunk
+        embeddings = np.array(embed_chunks(chunks, api_key=api_key))
 
-    # Store chunks and embeddings in the knowledge base with session_id
-    chunk_ids = memory.add_document(chunks, embeddings, doc_id=file.filename, source_filename=file.filename, session_id=session_id)
+        # Store chunks and embeddings in the knowledge base with session_id
+        chunk_ids = memory.add_document(chunks, embeddings, doc_id=file.filename, source_filename=file.filename, session_id=session_id)
 
-    # Store chunks and chunk ID in the lexical store with session_id
-    lexical_store.add_document(chunks, chunk_ids, session_id) 
+        # Store chunks and chunk ID in the lexical store with session_id
+        lexical_store.add_document(chunks, chunk_ids, session_id) 
 
-    # Persist the updated index
-    memory.save_index()
-    return {"status": "OK", "chunks_added": len(chunks), "session_id": session_id}
+        # Persist the updated index
+        memory.save_index()
+        return {"status": "OK", "chunks_added": len(chunks), "session_id": session_id}
+    except ValueError as e:
+        if "API key" in str(e):
+            raise HTTPException(status_code=401, detail="Invalid or missing API key. Please provide a valid OpenAI API key.")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process file: {str(e)}")
 
 
 
@@ -180,7 +188,7 @@ def fuse_search_results(semantic_results: list[dict], lexical_results: list[dict
 
 
 @app.post("/query")
-async def query_rag(query: str = Form(...), k: int = 3, session_id: str = Form(...)) -> dict[str, str | list[dict]]:
+async def query_rag(query: str = Form(...), k: int = 3, session_id: str = Form(...), api_key: str = Form(None)) -> dict[str, str | list[dict]]:
     """
     Query the RAG system to get an AI-generated answer based on document content.
     
@@ -191,6 +199,7 @@ async def query_rag(query: str = Form(...), k: int = 3, session_id: str = Form(.
         query (str): The user's question or query
         k (int, optional): Number of most relevant chunks to retrieve. Defaults to 3.
         session_id (str): Session ID to filter search results
+        api_key (str): Optional OpenAI API key. If not provided, uses environment variable.
         
     Returns:
         dict[str, str | list[dict]]: Response containing:
@@ -209,10 +218,10 @@ async def query_rag(query: str = Form(...), k: int = 3, session_id: str = Form(.
 
     try:
         # Enrich the query
-        enriched_query = enrich_query(query)
+        enriched_query = enrich_query(query, api_key=api_key)
 
         # Generate query embedding for the semantic search
-        q_emb = np.array(embed_chunks([enriched_query]))
+        q_emb = np.array(embed_chunks([enriched_query], api_key=api_key))
         
         # Perform semantic search with session_id filtering
         semantic_results = memory.search_with_session_id(q_emb, session_id, k=k)
@@ -228,14 +237,17 @@ async def query_rag(query: str = Form(...), k: int = 3, session_id: str = Form(.
 
 
         # Generate answer using retrieved contexts
-        answer = generate_answer(enriched_query, contexts, convo_memory)
+        answer = generate_answer(enriched_query, contexts, convo_memory, api_key=api_key)
 
         # Add message to conversation memory
         convo_memory.add_message(query, answer)
 
         return {"answer": answer, "results": results}
 
-
+    except ValueError as e:
+        if "API key" in str(e):
+            raise HTTPException(status_code=401, detail="Invalid or missing API key. Please provide a valid OpenAI API key.")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         print(f"Error querying RAG: {e}")
-        return {"error": "Failed to query RAG"}
+        raise HTTPException(status_code=500, detail=f"Failed to query RAG: {str(e)}")
